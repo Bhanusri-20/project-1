@@ -1,0 +1,62 @@
+import PyPDF2
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
+# Step 1: Extract text from PDF
+def extract_text_from_pdf(pdf_path):
+    pdf_reader = PyPDF2.PdfReader(pdf_path)
+    text_by_page = [page.extract_text() for page in pdf_reader.pages]
+    return text_by_page
+# Step 2: Split text into chunks
+def chunk_text(text_by_page, chunk_size=500):
+    chunks = []
+    for page_num, page_text in enumerate(text_by_page):
+        words = page_text.split()
+        for i in range(0, len(words), chunk_size):
+            chunk = " ".join(words[i:i + chunk_size])
+            chunks.append({"text": chunk, "page": page_num + 1})
+    return chunks
+# Step 3: Generate embeddings for chunks
+def embed_text(chunks, model_name='all-MiniLM-L6-v2'):
+    model = SentenceTransformer(model_name)
+    texts = [chunk["text"] for chunk in chunks]
+    embeddings = model.encode(texts)
+    return np.array(embeddings)
+# Step 4: Store embeddings in FAISS
+def create_faiss_index(embeddings):
+    dimension = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dimension)
+    index.add(embeddings)
+    return index
+# Step 5: Query the index
+def query_index(query, model, index, chunks, top_k=3):
+    query_embedding = model.encode([query])
+    distances, indices = index.search(query_embedding, top_k)
+    results = [{"text": chunks[idx]["text"], "page": chunks[idx]["page"], "distance": distances[0][i]}
+               for i, idx in enumerate(indices[0])]
+    return results
+# Main Functionality
+def main():
+    # PDF path
+    pdf_path = r"C:\Users\Naga Velathi\Downloads\Tables, Charts, and Graphs with Examples from History, Economics, Education, Psychology, Urban Affairs and Everyday Life - 2017-2018.pdf" # Replace with your PDF path
+    # Extract text from the PDF
+    text_by_page = extract_text_from_pdf(pdf_path)
+    # Chunk the extracted text
+    chunks = chunk_text(text_by_page, chunk_size=500)
+    # Generate embeddings for the chunks
+    embeddings = embed_text(chunks)
+    # Store embeddings in FAISS
+    index = create_faiss_index(embeddings)
+    # Initialize the embedding model
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    # Ask user for a query
+    print("\nPDF Loaded. Ask a question:")
+    user_query = input("enter the page number: ")
+    # Query the index
+    results = query_index(user_query, model, index, chunks)
+    # Display results
+    print("\nResults:")
+    for result in results:
+        print(f"- Page {result['page']}: {result['text'][:300]}... (Distance: {result['distance']:.4f})")
+if _name_ == "_main_":
+    main()
